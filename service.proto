@@ -1,0 +1,42 @@
+syntax = "proto3";
+option go_package="ai.";
+
+message Files {
+  repeated string files = 1;
+}
+
+message Text {
+   string text = 1;
+}
+
+message Payload {
+  string APIKey = 1;
+  string ModelVersion =2;
+  uint32 CTXLen = 3;
+}
+
+message Status {
+  bool success = 1;
+  string message = 2;
+}
+
+message FilesWithPayload{
+  Files files = 1;
+  Payload payload = 2;
+}
+
+message TextWithPayload{
+  Text text =1;
+  Payload payload = 2;
+} 
+
+message Empty{}
+
+service TransmitService {
+  rpc TransmitFiles (FilesWithPayload) returns (Status) {}
+  rpc TransmitText (TextWithPayload) returns (Status) {}
+  rpc DeleteFiles(Payload) returns (Status){}
+  rpc DeleteChat(Payload) returns (Status){}
+  rpc SaveHistory(Payload) returns (Status){}
+  rpc CreateSession(Payload)returns (Status){}
+}
