@@ -31,5 +31,8 @@ func (s *semaphoreConfig) TaskAmount() int {
 func NewSemaphoreConfig() (SemaphoreConfig, error) {
 	sc := &semaphoreConfig{}
 	err := sc.setEnv()
-	return sc, fmt.Errorf("%w", err)
+	if err != nil {
+		return sc, fmt.Errorf("%w", err)
+	}
+	return sc, nil
 }

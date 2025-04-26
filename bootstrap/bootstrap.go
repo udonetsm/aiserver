@@ -33,19 +33,20 @@ func (b *bootstrap) Load() {
 
 	b.logger = logger.NewLogger()
 
-	b.semConfig, err = configs.NewSemaphoreConfig()
-	if err != nil {
-		b.logger.Info(err)
-	}
-
 	b.rootCMD, err = cmds.NewRootCMD()
 	if err != nil {
 		b.logger.Fatal(err)
 	}
+
 	b.envLoader = envloader.NewEnvLoader(b.rootCMD.Source(), b.logger)
 	err = b.envLoader.LoadEnvs()
 	if err != nil {
 		b.logger.Fatal(err)
+	}
+
+	b.semConfig, err = configs.NewSemaphoreConfig()
+	if err != nil {
+		b.logger.Info(err)
 	}
 
 	b.sessionStorage = sessions.NewSessionStorage(b.logger)
