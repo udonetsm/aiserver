@@ -107,11 +107,18 @@ func (h *handlers) DeleteFiles(ctx context.Context, request *ai_.Payload) (*ai_.
 				defer wg.Done()
 
 				defer time.Sleep(time.Second)
-
-				err := client.DeleteFileByFilename(ctx, fileName)
-				if err != nil {
-					builder.WriteString(err.Error() + "\n")
-					return
+				for {
+					select {
+					case <-ctx.Done():
+						builder.WriteString(ctx.Err().Error() + "\n")
+						return
+					default:
+						err := client.DeleteFileByFilename(ctx, fileName)
+						if err != nil {
+							builder.WriteString(err.Error() + "\n")
+							return
+						}
+					}
 				}
 			}()
 		}
@@ -164,38 +171,48 @@ func (h *handlers) TransmitFiles(ctx context.Context, request *ai_.FilesWithPayl
 				defer wg.Done()
 
 				defer time.Sleep(time.Second)
-				name := uuid.NewString()
+				for {
+					select {
+					case <-ctx.Done():
+						builder.WriteString(ctx.Err().Error() + "\n")
+						return
+					default:
+						name := uuid.NewString()
 
-				ctype, err := DetectType(absPath)
-				if err != nil {
-					builder.WriteString(err.Error() + "\n")
-					return
+						ctype, err := DetectType(absPath)
+						if err != nil {
+							builder.WriteString(err.Error() + "\n")
+							return
+						}
+
+						err = ContentSupported(ctype)
+						if err != nil {
+							builder.WriteString(err.Error() + "\n")
+							return
+						}
+
+						link, err := client.SendFile(ctx, absPath, name, ctype)
+						if err != nil {
+							builder.WriteString(err.Error() + "\n")
+							return
+						}
+
+						if link == "" {
+							builder.WriteString("empty link for %s\n" + absPath)
+							return
+						}
+
+						err = chat.AddMessageToHistory(ctx, link, "user", ctype)
+						if err != nil {
+							builder.WriteString(err.Error() + "\n")
+							return
+						}
+
+						h.logger.Infof("pinned file [%s] named [%s]", absPath, name)
+						return
+					}
 				}
 
-				err = ContentSupported(ctype)
-				if err != nil {
-					builder.WriteString(err.Error() + "\n")
-					return
-				}
-
-				link, err := client.SendFile(ctx, absPath, name, ctype)
-				if err != nil {
-					builder.WriteString(err.Error() + "\n")
-					return
-				}
-
-				if link == "" {
-					builder.WriteString("empty link for %s\n" + absPath)
-					return
-				}
-
-				err = chat.AddMessageToHistory(ctx, link, "user", ctype)
-				if err != nil {
-					builder.WriteString(err.Error() + "\n")
-					return
-				}
-
-				h.logger.Infof("pinned file [%s] named [%s]", absPath, name)
 			}()
 		}
 	}
