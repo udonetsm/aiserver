@@ -1,22 +1,27 @@
 package bootstrap
 
 import (
-	"context"
-
-	"gitverse.ru/udonetsm/aiserver/chat"
+	ai_ "gitverse.ru/udonetsm/aiserver/aipack"
 	"gitverse.ru/udonetsm/aiserver/cmds"
 	"gitverse.ru/udonetsm/aiserver/configs"
-	envloader "gitverse.ru/udonetsm/aiserver/envLoader"
+	"gitverse.ru/udonetsm/aiserver/envloader"
+	"gitverse.ru/udonetsm/aiserver/handlers"
+	"gitverse.ru/udonetsm/aiserver/infrastructure"
 	"gitverse.ru/udonetsm/aiserver/logger"
+	"gitverse.ru/udonetsm/aiserver/semaphore"
+	"gitverse.ru/udonetsm/aiserver/sessions"
 )
 
 type bootstrap struct {
-	logger    logger.Logger
-	rootCMD   cmds.RootCMD
-	envLoader envloader.EnvLoader
-	llmConfig configs.LLMConfig
-	llmClient chat.Client
-	chat      chat.Chat
+	logger         logger.Logger
+	semConfig      configs.SemaphoreConfig
+	semaphore      semaphore.Semaphore
+	rootCMD        cmds.RootCMD
+	envLoader      envloader.EnvLoader
+	sessionStorage sessions.SessionStorage
+	handlers       handlers.Handlers
+	grpcConfig     configs.GRPCConfig
+	server         infrastructure.Server
 }
 
 type Bootstrap interface {
@@ -24,10 +29,14 @@ type Bootstrap interface {
 }
 
 func (b *bootstrap) Load() {
-	ctx := context.Background()
 	var err error
 
 	b.logger = logger.NewLogger()
+
+	b.semConfig, err = configs.NewSemaphoreConfig()
+	if err != nil {
+		b.logger.Info(err)
+	}
 
 	b.rootCMD, err = cmds.NewRootCMD()
 	if err != nil {
@@ -39,20 +48,23 @@ func (b *bootstrap) Load() {
 		b.logger.Fatal(err)
 	}
 
-	b.llmConfig, err = configs.NewLLMConfig(b.logger)
+	b.sessionStorage = sessions.NewSessionStorage(b.logger)
+
+	b.handlers = handlers.NewHandlers(b.logger, b.sessionStorage, b.semConfig)
+
+	b.grpcConfig, err = configs.NewGRPCConfig()
 	if err != nil {
 		b.logger.Fatal(err)
 	}
 
-	b.llmClient, err = chat.NewLLMClient(ctx, b.llmConfig)
+	b.server, err = infrastructure.NewGRPCServer(b.logger, b.grpcConfig)
 	if err != nil {
 		b.logger.Fatal(err)
 	}
+	ai_.RegisterTransmitServiceServer(b.server.Server(), b.handlers)
 
-	b.chat, err = chat.NewChatSession(b.llmClient)
-	if err != nil {
-		b.logger.Fatal(err)
-	}
+	b.server.Server().Serve(b.server.Listener())
+
 }
 
 func NewBootstrap() Bootstrap {
