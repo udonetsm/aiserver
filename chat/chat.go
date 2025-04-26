@@ -5,21 +5,62 @@ import (
 	"fmt"
 
 	"github.com/google/generative-ai-go/genai"
+	"gitverse.ru/udonetsm/aiserver/logger"
 	"google.golang.org/api/iterator"
 )
 
 type chat struct {
 	*genai.ChatSession
-	client Client
+	client   Client
+	indxList []uint
+	logger   logger.Logger
 }
 
 type Chat interface {
 	SendMessage(ctx context.Context, message string, answer chan<- string) error
-	AddMessageToHistory(ctx context.Context, message, role, ctype string) error
-
-	ClearHistory(ctx context.Context) error
 	SetClient(client Client)
 	Client() Client
+	HistManager() HistoryManager
+}
+
+type HistoryManager interface {
+	AddMessageToHistory(ctx context.Context, message, role, ctype string) (uint, error)
+	SaveFileIndex(indx uint) error
+	DropFileInfoMessageByIndex(indx uint) error
+	HistoryFileIndexes() ([]uint, error)
+	ClearHistory(ctx context.Context) error
+}
+
+func (c *chat) HistManager() HistoryManager {
+	return c
+}
+
+func (c *chat) DropFileInfoMessageByIndex(indx uint) error {
+	if c.ChatSession.History == nil {
+		return fmt.Errorf("nil chat session history not allowed")
+	}
+
+	if uint(len(c.ChatSession.History)) <= indx {
+		return fmt.Errorf("elemet not exixts")
+	}
+
+	c.ChatSession.History[indx] =
+		&genai.Content{
+			Parts: []genai.Part{
+				genai.Text("d"),
+			},
+			Role: "user"}
+	c.logger.Infof("removed message by %v indx", indx)
+	return nil
+}
+
+func (c *chat) HistoryFileIndexes() ([]uint, error) {
+	var err error
+	if len(c.ChatSession.History) < 1 {
+		err = fmt.Errorf("history cleared. Skip clearing indexes")
+		c.indxList = make([]uint, 0)
+	}
+	return c.indxList, err
 }
 
 func (c *chat) SendMessage(ctx context.Context, message string, answer chan<- string) error {
@@ -50,12 +91,12 @@ func (c *chat) SendMessage(ctx context.Context, message string, answer chan<- st
 	}
 }
 
-func (c *chat) AddMessageToHistory(ctx context.Context, message, role, ctype string) error {
+func (c *chat) AddMessageToHistory(ctx context.Context, message, role, ctype string) (uint, error) {
 	if c.ChatSession == nil {
-		return fmt.Errorf("nil chat session not allowed")
+		return 0, fmt.Errorf("nil chat session not allowed")
 	}
 	if c.ChatSession.History == nil {
-		return fmt.Errorf("nil history not allowed")
+		return 0, fmt.Errorf("nil history not allowed")
 	}
 	var content *genai.Content
 	if ctype != "" {
@@ -73,6 +114,14 @@ func (c *chat) AddMessageToHistory(ctx context.Context, message, role, ctype str
 		}
 	}
 	c.ChatSession.History = append(c.ChatSession.History, content)
+	return uint(len(c.ChatSession.History) - 1), nil
+}
+
+func (c *chat) SaveFileIndex(indx uint) error {
+	if c.indxList == nil {
+		return fmt.Errorf("nil index list not allowed")
+	}
+	c.indxList = append(c.indxList, indx)
 	return nil
 }
 

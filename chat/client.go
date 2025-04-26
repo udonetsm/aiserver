@@ -1,10 +1,15 @@
 package chat
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"net/http"
+	"os"
+	"strings"
 
 	"github.com/google/generative-ai-go/genai"
+	"github.com/google/uuid"
 	"gitverse.ru/udonetsm/aiserver/configs"
 	"gitverse.ru/udonetsm/aiserver/logger"
 	"google.golang.org/api/iterator"
@@ -19,22 +24,57 @@ type client struct {
 }
 
 type Client interface {
-	SendFile(ctx context.Context, path, name, mime string) (link string, err error)
+	SendFile(ctx context.Context, path string) (link, ctype string, err error)
 	LisFiles(ctx context.Context) ([]string, error)
 	DeleteFileByFilename(ctx context.Context, filename string) error
 	Generative() Model
 }
 
-func (c *client) SendFile(ctx context.Context, path, name, mime string) (link string, err error) {
+func (c *client) readFile(adbsPath string) ([]byte, error) {
+	read, err := os.ReadFile(adbsPath)
+	if err != nil {
+		return nil, fmt.Errorf("clien.readfile error: %w", err)
+	}
+	if len(read) < 1 {
+		return nil, fmt.Errorf("empty file")
+	}
+	return read, nil
+}
+
+func (c *client) detectContentType(content []byte) (string, error) {
+	ct := http.DetectContentType(content)
+	if ct == "" {
+		return "", fmt.Errorf("content type not detected")
+	}
+	return ct, nil
+}
+
+func (c *client) contentTypeSupported(contentType string) bool {
+	return !strings.Contains(contentType, "octet") && !strings.Contains(contentType, "zip")
+}
+
+func (c *client) SendFile(ctx context.Context, path string) (link, ctype string, err error) {
+	read, err := c.readFile(path)
+	if err != nil {
+		return "", "", fmt.Errorf("%w", err)
+	}
+	contentType, err := c.detectContentType(read)
+	if err != nil {
+		return "", "", fmt.Errorf("%w", err)
+	}
+	if !c.contentTypeSupported(contentType) {
+		return "", "", fmt.Errorf("content type not supported")
+	}
+	name := uuid.NewString()
 	opts := &genai.UploadFileOptions{
 		DisplayName: name,
-		MIMEType:    mime,
+		MIMEType:    contentType,
 	}
-	genaiFile, err := c.Client.UploadFileFromPath(ctx, path, opts)
+	genaiFile, err := c.Client.UploadFile(ctx, name, bytes.NewBuffer(read), opts)
 	if err != nil {
-		return "", fmt.Errorf("%w", err)
+		return "", "", fmt.Errorf("%w", err)
 	}
-	return genaiFile.URI, nil
+	return genaiFile.URI, contentType, nil
 }
 
 func (c *client) LisFiles(ctx context.Context) ([]string, error) {
