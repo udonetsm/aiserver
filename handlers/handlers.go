@@ -2,14 +2,10 @@ package handlers
 
 import (
 	"context"
-	"fmt"
-	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	ai_ "gitverse.ru/udonetsm/aiserver/aipack"
 	"gitverse.ru/udonetsm/aiserver/chat"
 	"gitverse.ru/udonetsm/aiserver/configs"
@@ -39,7 +35,7 @@ func (h *handlers) CreateSession(ctx context.Context, request *ai_.Payload) (*ai
 		return &ai_.Status{Message: err.Error()}, err
 	}
 	model := client.Generative()
-	chat := model.Start()
+	chat := model.Start(h.logger)
 	chat.SetClient(client)
 
 	err = h.sessionStorage.NewSession(request.APIKey, chat)
@@ -94,56 +90,29 @@ func (h *handlers) DeleteFiles(ctx context.Context, request *ai_.Payload) (*ai_.
 	builder := strings.Builder{}
 	defer builder.Reset()
 	for _, fileName := range fileList {
-		select {
-		case <-ctx.Done():
-			return &ai_.Status{Message: ctx.Err().Error()}, ctx.Err()
-		default:
-			wg.Add(1)
+		wg.Add(1)
+		go func() {
+			semaphore.Acquire()
+			defer semaphore.Release()
 
-			go func() {
-				semaphore.Acquire()
-				defer semaphore.Release()
+			defer wg.Done()
 
-				defer wg.Done()
-
-				defer time.Sleep(time.Second)
-				for {
-					select {
-					case <-ctx.Done():
-						builder.WriteString(ctx.Err().Error() + "\n")
-						return
-					default:
-						err := client.DeleteFileByFilename(ctx, fileName)
-						if err != nil {
-							builder.WriteString(err.Error() + "\n")
-							return
-						}
-					}
+			defer time.Sleep(time.Second)
+			select {
+			case <-ctx.Done():
+				builder.WriteString(ctx.Err().Error() + "\n")
+				return
+			default:
+				err := client.DeleteFileByFilename(ctx, fileName)
+				if err != nil {
+					builder.WriteString(err.Error() + "\n")
+					return
 				}
-			}()
-		}
+			}
+		}()
 	}
 	wg.Wait()
 	return &ai_.Status{Success: true, Message: "deleted:\n" + builder.String()}, nil
-}
-
-func ContentSupported(ct string) error {
-	if strings.Contains(ct, "octet") || strings.Contains(ct, "zip") {
-		return fmt.Errorf("not supported")
-	}
-	return nil
-}
-
-func DetectType(path string) (string, error) {
-	read, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("err while detect content type: %w", err)
-	}
-	ct := http.DetectContentType(read)
-	if ct == "" {
-		return "", fmt.Errorf("detect content type fail")
-	}
-	return ct, nil
 }
 
 func (h *handlers) TransmitFiles(ctx context.Context, request *ai_.FilesWithPayload) (*ai_.Status, error) {
@@ -153,11 +122,11 @@ func (h *handlers) TransmitFiles(ctx context.Context, request *ai_.FilesWithPayl
 	if err != nil {
 		return &ai_.Status{Message: err.Error()}, err
 	}
-	client := chat.Client()
 	semaphore := semaphore.NewSemaphore(h.semaphoreConfig)
 	builder := strings.Builder{}
 	defer builder.Reset()
 	wg := sync.WaitGroup{}
+	client := chat.Client()
 	for _, absPath := range request.Files.Files {
 		select {
 		case <-ctx.Done():
@@ -171,48 +140,29 @@ func (h *handlers) TransmitFiles(ctx context.Context, request *ai_.FilesWithPayl
 				defer wg.Done()
 
 				defer time.Sleep(time.Second)
-				for {
-					select {
-					case <-ctx.Done():
-						builder.WriteString(ctx.Err().Error() + "\n")
-						return
-					default:
-						name := uuid.NewString()
-
-						ctype, err := DetectType(absPath)
-						if err != nil {
-							builder.WriteString(err.Error() + "\n")
-							return
-						}
-
-						err = ContentSupported(ctype)
-						if err != nil {
-							builder.WriteString(err.Error() + "\n")
-							return
-						}
-
-						link, err := client.SendFile(ctx, absPath, name, ctype)
-						if err != nil {
-							builder.WriteString(err.Error() + "\n")
-							return
-						}
-
-						if link == "" {
-							builder.WriteString("empty link for %s\n" + absPath)
-							return
-						}
-
-						err = chat.AddMessageToHistory(ctx, link, "user", ctype)
-						if err != nil {
-							builder.WriteString(err.Error() + "\n")
-							return
-						}
-
-						h.logger.Infof("pinned file [%s] named [%s]", absPath, name)
+				select {
+				case <-ctx.Done():
+					builder.WriteString(ctx.Err().Error() + "\n")
+					return
+				default:
+					link, ctype, err := client.SendFile(ctx, absPath)
+					if err != nil {
+						builder.WriteString(err.Error() + "\n")
 						return
 					}
+					indx, err := chat.HistManager().AddMessageToHistory(ctx, link, "user", ctype)
+					if err != nil {
+						builder.WriteString(err.Error() + "\n")
+						return
+					}
+					err = chat.HistManager().SaveFileIndex(indx)
+					if err != nil {
+						builder.WriteString(err.Error() + "\n")
+						return
+					}
+					h.logger.Infof("pinned file [%s]", absPath)
+					return
 				}
-
 			}()
 		}
 	}
@@ -225,7 +175,7 @@ func (h *handlers) DeleteChat(ctx context.Context, request *ai_.Payload) (*ai_.S
 	if err != nil {
 		return &ai_.Status{Message: err.Error()}, err
 	}
-	err = chat.ClearHistory(ctx)
+	err = chat.HistManager().ClearHistory(ctx)
 	if err != nil {
 		return &ai_.Status{Message: err.Error()}, err
 	}
