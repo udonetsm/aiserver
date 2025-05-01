@@ -9,6 +9,8 @@ import (
 	ai_ "gitverse.ru/udonetsm/aiserver/aipack"
 	"gitverse.ru/udonetsm/aiserver/chat"
 	"gitverse.ru/udonetsm/aiserver/configs"
+	"gitverse.ru/udonetsm/aiserver/contentreader"
+	"gitverse.ru/udonetsm/aiserver/historystorage"
 	"gitverse.ru/udonetsm/aiserver/logger"
 	"gitverse.ru/udonetsm/aiserver/semaphore"
 	"gitverse.ru/udonetsm/aiserver/sessions"
@@ -18,6 +20,7 @@ type handlers struct {
 	logger          logger.Logger
 	sessionStorage  sessions.SessionStorage
 	semaphoreConfig configs.SemaphoreConfig
+	historySource   string
 	ai_.TransmitServiceServer
 }
 
@@ -36,7 +39,7 @@ func (h *handlers) CreateSession(ctx context.Context, request *ai_.Payload) (*ai
 	}
 	model := client.Generative()
 	chat := model.Start(h.logger)
-	chat.SetClient(client)
+	chat.SaveClient(client)
 
 	err = h.sessionStorage.NewSession(request.APIKey, chat)
 	if err != nil {
@@ -80,7 +83,7 @@ func (h *handlers) DeleteFiles(ctx context.Context, request *ai_.Payload) (*ai_.
 	}
 	client := chat.Client()
 
-	fileList, err := client.LisFiles(ctx)
+	fileList, err := client.FileManager().LisFiles(ctx)
 	if err != nil {
 		return &ai_.Status{Message: err.Error()}, err
 	}
@@ -103,7 +106,7 @@ func (h *handlers) DeleteFiles(ctx context.Context, request *ai_.Payload) (*ai_.
 				builder.WriteString(ctx.Err().Error() + "\n")
 				return
 			default:
-				err := client.DeleteFileByFilename(ctx, fileName)
+				err := client.FileManager().DeleteFileByFilename(ctx, fileName)
 				if err != nil {
 					builder.WriteString(err.Error() + "\n")
 					return
@@ -145,7 +148,12 @@ func (h *handlers) TransmitFiles(ctx context.Context, request *ai_.FilesWithPayl
 					builder.WriteString(ctx.Err().Error() + "\n")
 					return
 				default:
-					link, ctype, err := client.SendFile(ctx, absPath)
+					err := client.FileManager().Configure(ctx, contentreader.NewContentReader(h.logger, configs.NewFileReaderConfig(absPath)))
+					if err != nil {
+						builder.WriteString(err.Error() + "\n")
+						return
+					}
+					link, ctype, err := client.FileManager().SendFile(ctx)
 					if err != nil {
 						builder.WriteString(err.Error() + "\n")
 						return
@@ -182,6 +190,38 @@ func (h *handlers) DeleteChat(ctx context.Context, request *ai_.Payload) (*ai_.S
 	return &ai_.Status{Success: true, Message: "cleared"}, nil
 }
 
-func NewHandlers(logger logger.Logger, sessionStorage sessions.SessionStorage, semaphoreConfig configs.SemaphoreConfig) Handlers {
-	return &handlers{sessionStorage: sessionStorage, logger: logger, semaphoreConfig: semaphoreConfig}
+func (h *handlers) SaveHistory(ctx context.Context, payload *ai_.Payload) (*ai_.Status, error) {
+	chat, err := h.sessionStorage.SessionByKey(payload.APIKey)
+	if err != nil {
+		return &ai_.Status{Message: err.Error()}, err
+	}
+
+	historystorageConfig := configs.NewHistoryStorageConfig(h.logger, payload.APIKey)
+	err = historystorageConfig.Configure(h.historySource)
+	if err != nil {
+		return &ai_.Status{Message: err.Error()}, err
+	}
+
+	historyStorage := historystorage.NewHistoryStorage(h.logger, historystorageConfig)
+	err = historyStorage.Configure(ctx)
+	if err != nil {
+		h.logger.Info(err)
+		return &ai_.Status{Message: err.Error()}, err
+	}
+
+	err = chat.HistManager().SaveHistory(ctx, historyStorage)
+	if err != nil {
+		h.logger.Info(err)
+		return &ai_.Status{Message: err.Error()}, err
+	}
+
+	return &ai_.Status{Success: true, Message: "OK"}, err
+}
+
+func NewHandlers(logger logger.Logger, sessionStorage sessions.SessionStorage, semaphoreConfig configs.SemaphoreConfig, historySource string) Handlers {
+	return &handlers{
+		sessionStorage:  sessionStorage,
+		logger:          logger,
+		semaphoreConfig: semaphoreConfig,
+	}
 }

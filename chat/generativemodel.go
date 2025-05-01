@@ -10,7 +10,7 @@ type generativeModel struct {
 }
 
 type Model interface {
-	Start(logger.Logger) Chat
+	Start(logger logger.Logger) Chat
 }
 
 func (g *generativeModel) Start(logger logger.Logger) Chat {

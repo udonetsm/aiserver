@@ -6,6 +6,7 @@ import (
 	"gitverse.ru/udonetsm/aiserver/configs"
 	"gitverse.ru/udonetsm/aiserver/envloader"
 	"gitverse.ru/udonetsm/aiserver/handlers"
+	"gitverse.ru/udonetsm/aiserver/historystorage"
 	"gitverse.ru/udonetsm/aiserver/infrastructure"
 	"gitverse.ru/udonetsm/aiserver/logger"
 	"gitverse.ru/udonetsm/aiserver/semaphore"
@@ -13,15 +14,17 @@ import (
 )
 
 type bootstrap struct {
-	logger         logger.Logger
-	semConfig      configs.SemaphoreConfig
-	semaphore      semaphore.Semaphore
-	rootCMD        cmds.RootCMD
-	envLoader      envloader.EnvLoader
-	sessionStorage sessions.SessionStorage
-	handlers       handlers.Handlers
-	grpcConfig     configs.GRPCConfig
-	server         infrastructure.Server
+	logger            logger.Logger
+	semConfig         configs.SemaphoreConfig
+	semaphore         semaphore.Semaphore
+	rootCMD           cmds.RootCMD
+	envLoader         envloader.EnvLoader
+	sessionStorage    sessions.SessionStorage
+	handlers          handlers.Handlers
+	grpcConfig        configs.GRPCConfig
+	server            infrastructure.Server
+	histStorageConfig configs.HistoryStorageConfig
+	historyStorage    historystorage.HistoryStorage
 }
 
 type Bootstrap interface {
@@ -38,7 +41,7 @@ func (b *bootstrap) Load() {
 		b.logger.Fatal(err)
 	}
 
-	b.envLoader = envloader.NewEnvLoader(b.rootCMD.Source(), b.logger)
+	b.envLoader = envloader.NewEnvLoader(b.rootCMD.EnvSource(), b.logger)
 	err = b.envLoader.LoadEnvs()
 	if err != nil {
 		b.logger.Fatal(err)
@@ -51,7 +54,7 @@ func (b *bootstrap) Load() {
 
 	b.sessionStorage = sessions.NewSessionStorage(b.logger)
 
-	b.handlers = handlers.NewHandlers(b.logger, b.sessionStorage, b.semConfig)
+	b.handlers = handlers.NewHandlers(b.logger, b.sessionStorage, b.semConfig, b.rootCMD.HistorySource())
 
 	b.grpcConfig, err = configs.NewGRPCConfig()
 	if err != nil {
