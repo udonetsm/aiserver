@@ -47,7 +47,7 @@ func (h *historyStorageConfig) analizeSource(source string) error {
 		if err != nil {
 			return fmt.Errorf("historyStorage.Configure() error: %w", err)
 		}
-		source = filepath.Join(home, "chathistory", h.apiKey)
+		source = filepath.Join(home, "chathistory")
 	}
 
 	splited := strings.Split(source, string(filepath.Separator))
