@@ -38,11 +38,11 @@ func (h *historystorage) Save(ctx context.Context, history history.History) erro
 	if err != nil {
 		return fmt.Errorf("historyStorage error: %w", err)
 	}
+	h.logger.Infof("saved to %s", h.historyStorageConfig.HistorySource())
 	return nil
 }
 
 func (hs *historystorage) createWriteCloser(ctx context.Context) error {
-	hs.logger.Infof("creating %s... ", hs.historyStorageConfig.HistorySource())
 	file, err := os.OpenFile(hs.historyStorageConfig.HistorySource(), os.O_WRONLY|os.O_CREATE, 0755)
 	for {
 		select {

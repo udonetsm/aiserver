@@ -215,7 +215,6 @@ func (h *handlers) SaveHistory(ctx context.Context, payload *ai_.Payload) (*ai_.
 		h.logger.Infof("%v for %s", err, payload.APIKey)
 		return &ai_.Status{Message: err.Error()}, err
 	}
-
 	historystorageConfig := configs.NewHistoryStorageConfig(payload.APIKey)
 	err = historystorageConfig.Configure(payload.HistorySource)
 	if err != nil {
@@ -229,21 +228,11 @@ func (h *handlers) SaveHistory(ctx context.Context, payload *ai_.Payload) (*ai_.
 		h.logger.Infof("%v for %s", err, payload.APIKey)
 		return &ai_.Status{Message: err.Error()}, err
 	}
-
-	defer func() {
-		err := historyStorage.CloseStorage()
-		if err != nil {
-			h.logger.Infof("%v for %s", err, payload.APIKey)
-			return
-		}
-	}()
-
 	err = chat.HistManager().SaveHistory(ctx, historyStorage)
 	if err != nil {
 		h.logger.Infof("%v for %s", err, payload.APIKey)
 		return &ai_.Status{Message: err.Error()}, err
 	}
-	h.logger.Infof("saved for %s", payload.APIKey)
 	return &ai_.Status{Success: true, Message: "OK"}, err
 }
 
