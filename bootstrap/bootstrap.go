@@ -1,6 +1,8 @@
 package bootstrap
 
 import (
+	"log"
+
 	ai_ "gitverse.ru/udonetsm/aiserver/aipack"
 	"gitverse.ru/udonetsm/aiserver/cmds"
 	"gitverse.ru/udonetsm/aiserver/configs"
@@ -34,18 +36,33 @@ type Bootstrap interface {
 func (b *bootstrap) Load() {
 	var err error
 
-	b.logger = logger.NewLogger()
-
 	b.rootCMD, err = cmds.NewRootCMD()
 	if err != nil {
 		b.logger.Fatal(err)
 	}
 
-	b.envLoader = envloader.NewEnvLoader(b.rootCMD.EnvSource(), b.logger)
+	b.envLoader = envloader.NewEnvLoader(b.rootCMD.EnvSource())
 	err = b.envLoader.LoadEnvs()
 	if err != nil {
 		b.logger.Fatal(err)
 	}
+
+	loggerConfig := configs.NewLoggerConfig()
+	err = loggerConfig.Configure()
+	if err != nil {
+		log.Println(err)
+	}
+
+	b.logger = logger.NewLogger(loggerConfig)
+	err = b.logger.Configure()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer func() {
+		err := b.logger.CloseLogger()
+		log.Println(err)
+	}()
 
 	b.semConfig, err = configs.NewSemaphoreConfig()
 	if err != nil {
@@ -54,7 +71,7 @@ func (b *bootstrap) Load() {
 
 	b.sessionStorage = sessions.NewSessionStorage(b.logger)
 
-	b.handlers = handlers.NewHandlers(b.logger, b.sessionStorage, b.semConfig, b.rootCMD.HistorySource())
+	b.handlers = handlers.NewHandlers(b.logger, b.sessionStorage, b.semConfig)
 
 	b.grpcConfig, err = configs.NewGRPCConfig()
 	if err != nil {

@@ -39,6 +39,7 @@ func (c *chat) SendMessage(ctx context.Context, message string, answer chan<- st
 				return nil
 			}
 			if err != nil {
+				close(answer)
 				return fmt.Errorf("%w", err)
 			}
 			for _, cand := range resp.Candidates {

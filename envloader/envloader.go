@@ -4,12 +4,10 @@ import (
 	"fmt"
 
 	"github.com/joho/godotenv"
-	"gitverse.ru/udonetsm/aiserver/logger"
 )
 
 type envLoader struct {
 	source string
-	logger logger.Logger
 }
 
 type EnvLoader interface {
@@ -24,6 +22,6 @@ func (e *envLoader) LoadEnvs() error {
 	return nil
 }
 
-func NewEnvLoader(source string, logger logger.Logger) EnvLoader {
-	return &envLoader{source: source, logger: logger}
+func NewEnvLoader(source string) EnvLoader {
+	return &envLoader{source: source}
 }

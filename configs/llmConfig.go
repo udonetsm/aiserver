@@ -1,12 +1,7 @@
 package configs
 
-import (
-	"gitverse.ru/udonetsm/aiserver/logger"
-)
-
 type llmconfig struct {
 	apikey, modelname string
-	logger            logger.Logger
 }
 
 type LLMConfig interface {
@@ -22,7 +17,7 @@ func (l *llmconfig) ModelName() string {
 	return l.modelname
 }
 
-func NewLLMConfig(logger logger.Logger, apikey, modelname string) (LLMConfig, error) {
-	llmConfig := &llmconfig{logger: logger, apikey: apikey, modelname: modelname}
+func NewLLMConfig(apikey, modelname string) (LLMConfig, error) {
+	llmConfig := &llmconfig{apikey: apikey, modelname: modelname}
 	return llmConfig, nil
 }

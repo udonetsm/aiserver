@@ -9,15 +9,13 @@ import (
 )
 
 type rootCmd struct {
-	envSource            string
-	historyStorageSource string
+	envSource string
 	*cobra.Command
 }
 
 type RootCMD interface {
 	FetchCMD() error
 	EnvSource() string
-	HistorySource() string
 }
 
 func (r *rootCmd) homePath() (string, error) {
@@ -37,19 +35,13 @@ func (r *rootCmd) FetchCMD() error {
 		return fmt.Errorf("%w", err)
 	}
 	r.envSource = filepath.Join(home, ".config.env")
-	r.Command.Flags().StringVarP(&r.envSource, "envsource", "e", r.envSource, "set environment variable source as absolute path")
-	r.Command.Flags().StringVarP(&r.historyStorageSource, "storagesource", "s", "", "set custom history storage source")
+	r.Command.Flags().StringVarP(&r.envSource, "envsource", "e", r.envSource, "set where is your config.env file")
 	r.Command.Execute()
-
 	return nil
 }
 
 func (r *rootCmd) EnvSource() string {
 	return r.envSource
-}
-
-func (r *rootCmd) HistorySource() string {
-	return r.historyStorageSource
 }
 
 func NewRootCMD() (RootCMD, error) {

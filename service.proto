@@ -12,7 +12,8 @@ message Text {
 message Payload {
   string APIKey = 1;
   string ModelVersion =2;
-  uint32 CTXLen = 3;
+  uint64 CTXLen = 3;
+  string HistorySource = 4;
 }
 
 message Status {

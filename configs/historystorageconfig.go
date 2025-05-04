@@ -6,14 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"gitverse.ru/udonetsm/aiserver/logger"
 )
 
 type historyStorageConfig struct {
 	hitorysource string
 	apiKey       string
-	logger       logger.Logger
 }
 
 type HistoryStorageConfig interface {
@@ -38,7 +35,6 @@ func (h *historyStorageConfig) createHistoryFolderfNotExists(parent string) erro
 	if os.IsNotExist(err) {
 		err := os.Mkdir(parent, 0755)
 		if err != nil {
-
 			return fmt.Errorf("%s create chat history folder fail: %w", parent, err)
 		}
 	}
@@ -63,7 +59,7 @@ func (h *historyStorageConfig) analizeSource(source string) error {
 			return fmt.Errorf("%w", err)
 		}
 	}
-	h.hitorysource = filepath.Join(h.hitorysource, time.Now().Format("Jan-2-2006_15:04:05"))
+	h.hitorysource = filepath.Join(h.hitorysource, h.apiKey, time.Now().Format("Jan-2-2006_15:04:05"))
 	return nil
 }
 
@@ -75,6 +71,6 @@ func (h *historyStorageConfig) Configure(source string) error {
 	return nil
 }
 
-func NewHistoryStorageConfig(logger logger.Logger, apiKey string) HistoryStorageConfig {
-	return &historyStorageConfig{logger: logger, apiKey: apiKey}
+func NewHistoryStorageConfig(apiKey string) HistoryStorageConfig {
+	return &historyStorageConfig{apiKey: apiKey}
 }

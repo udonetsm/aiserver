@@ -20,6 +20,7 @@ type historystorage struct {
 type HistoryStorage interface {
 	Save(ctx context.Context, history history.History) error
 	Configure(ctx context.Context) error
+	CloseStorage() error
 }
 
 func (h *historystorage) Configure(ctx context.Context) error {
@@ -56,6 +57,14 @@ func (hs *historystorage) createWriteCloser(ctx context.Context) error {
 			return nil
 		}
 	}
+}
+
+func (hs *historystorage) CloseStorage() error {
+	err := hs.storage.Close()
+	if err != nil {
+		return fmt.Errorf("%w", err)
+	}
+	return nil
 }
 
 func NewHistoryStorage(logger logger.Logger, historyStorageConfig configs.HistoryStorageConfig) HistoryStorage {
