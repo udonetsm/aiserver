@@ -61,7 +61,9 @@ func (b *bootstrap) Load() {
 
 	defer func() {
 		err := b.logger.CloseLogger()
-		log.Println(err)
+		if err != nil {
+			b.logger.Infof("can't close logger storage")
+		}
 	}()
 
 	b.semConfig, err = configs.NewSemaphoreConfig()
